@@ -1,0 +1,19 @@
+---
+wg_interface: wg0
+wg_port: 51820
+wg_dir: /etc/wireguard
+wg_server_address: 10.8.0.1/24
+wg_network: 10.8.0.0/24
+# Reach the VPN endpoint at this address (the bastion's address on the VM network by default).
+wg_endpoint: "{{ ansible_host }}"
+# One config file per client; add more entries for more devices.
+wg_clients:
+  - { name: laptop, address: 10.8.0.2 }
+  - { name: phone,  address: 10.8.0.3 }
+# Split tunnel: only these ranges go through the VPN. Use ["0.0.0.0/0"] to send everything.
+wg_client_allowed_ips:
+  - "{{ wg_network }}"
+  - "{{ ansible_default_ipv4.network }}/{{ ansible_default_ipv4.prefix }}"
+wg_client_dns: ""
+# Where fetched client configs land on the control machine.
+wg_clients_dir: "{{ playbook_dir }}/clients"

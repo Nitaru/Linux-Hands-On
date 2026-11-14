@@ -1,0 +1,33 @@
+---
+- name: Make sure the web root exists
+  ansible.builtin.file:
+    path: "{{ app_web_root }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: "0755"
+
+- name: Build the site tarball on the control machine
+  ansible.builtin.archive:
+    path: "{{ playbook_dir }}/site/"
+    dest: "{{ app_tarball }}"
+    format: gz
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when: app_git_repo is not defined
+
+- name: Upload and unpack the static site
+  ansible.builtin.unarchive:
+    src: "{{ app_tarball }}"
+    dest: "{{ app_web_root }}"
+    owner: www-data
+    group: www-data
+  when: app_git_repo is not defined
+
+- name: Deploy the site from git
+  ansible.builtin.git:
+    repo: "{{ app_git_repo }}"
+    dest: "{{ app_web_root }}"
+    version: HEAD
+  when: app_git_repo is defined

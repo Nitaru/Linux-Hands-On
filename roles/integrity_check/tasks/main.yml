@@ -1,0 +1,82 @@
+---
+- name: Install the integrity-check tool
+  ansible.builtin.copy:
+    src: integrity-check
+    dest: /usr/local/sbin/integrity-check
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Private state directory for the baseline (root only)
+  ansible.builtin.file:
+    path: /var/lib/integrity-check
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Directory for sealed audit logs
+  ansible.builtin.file:
+    path: /var/log/fortress
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: Write the provisioning record once (never overwritten)
+  ansible.builtin.copy:
+    dest: /var/log/fortress/provisioned.log
+    content: |
+      host={{ inventory_hostname }} provisioned={{ ansible_date_time.iso8601 }} by=ansible
+    force: false
+    owner: root
+    group: root
+    mode: "0640"
+
+# Config: Ansible owns it. Report drift first so a manual change does not vanish silently.
+- name: Check config paths that were baselined by an earlier run
+  ansible.builtin.command: /usr/local/sbin/integrity-check check {{ item }}
+  loop: "{{ integrity_config_paths }}"
+  register: integrity_drift
+  changed_when: false
+  failed_when: false
+
+- name: Report configuration drift found before this run
+  ansible.builtin.debug:
+    msg: "{{ item.item }}: {{ (item.stderr_lines | default([])) | join('; ') }}"
+  loop: "{{ integrity_drift.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: item.rc == 1
+
+- name: Baseline the configuration as Ansible just left it
+  ansible.builtin.command: /usr/local/sbin/integrity-check init {{ item }}
+  loop: "{{ integrity_config_paths }}"
+  changed_when: false
+
+# Logs: sealed once, a changed log must be investigated, not auto-accepted.
+- name: Seal the audit logs (only when not tracked yet)
+  ansible.builtin.shell: |
+    /usr/local/sbin/integrity-check list | grep -qxF {{ item }} || /usr/local/sbin/integrity-check init {{ item }}
+  args:
+    executable: /bin/bash
+  loop: "{{ integrity_log_paths }}"
+  register: integrity_seal
+  changed_when: "'Hashes stored' in integrity_seal.stdout"
+
+- name: Install the systemd service and timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop: [integrity-check.service, integrity-check.timer]
+  notify: Reload systemd
+
+- name: Make systemd see the new units before enabling them
+  ansible.builtin.meta: flush_handlers
+
+- name: Run the check every few minutes
+  ansible.builtin.systemd:
+    name: integrity-check.timer
+    enabled: true
+    state: started

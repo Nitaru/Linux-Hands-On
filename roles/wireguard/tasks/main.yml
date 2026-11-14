@@ -1,0 +1,93 @@
+---
+- name: Install WireGuard
+  ansible.builtin.apt:
+    name: [wireguard, wireguard-tools, qrencode]
+    state: present
+
+- name: Enable IPv4 forwarding (persistent, via sysctl.d)
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_file: /etc/sysctl.d/99-wireguard.conf
+    state: present
+    reload: true
+
+- name: Private directory for keys
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop: ["{{ wg_dir }}/keys", "{{ wg_dir }}/clients"]
+
+# Keys are created on the server once and never overwritten, so re-runs keep clients working.
+- name: Generate key pairs and preshared keys (server and every client)
+  ansible.builtin.shell: |
+    set -o pipefail
+    umask 077
+    k={{ wg_dir }}/keys/{{ item }}
+    wg genkey | tee "$k.key" | wg pubkey > "$k.pub"
+    wg genpsk > "$k.psk"
+  args:
+    executable: /bin/bash
+    creates: "{{ wg_dir }}/keys/{{ item }}.psk"
+  loop: "{{ ['server'] + (wg_clients | map(attribute='name') | list) }}"
+
+- name: Read the key material
+  ansible.builtin.slurp:
+    src: "{{ wg_dir }}/keys/{{ item.0 }}.{{ item.1 }}"
+  loop: "{{ (['server'] + (wg_clients | map(attribute='name') | list)) | product(['key', 'pub', 'psk']) | list }}"
+  register: wg_key_files
+  no_log: true
+
+- name: Index the keys by "<name>_<kind>"
+  ansible.builtin.set_fact:
+    wg_keys: "{{ wg_keys | default({}) | combine({item.item.0 ~ '_' ~ item.item.1: item.content | b64decode | trim}) }}"
+  loop: "{{ wg_key_files.results }}"
+  loop_control:
+    label: "{{ item.item.0 }}.{{ item.item.1 }}"
+  no_log: true
+
+- name: Configure the WireGuard interface
+  ansible.builtin.template:
+    src: wg0.conf.j2
+    dest: "{{ wg_dir }}/{{ wg_interface }}.conf"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart WireGuard
+  no_log: true
+
+- name: Firewall - open the WireGuard port
+  community.general.ufw:
+    rule: allow
+    port: "{{ wg_port | string }}"
+    proto: udp
+
+- name: Start WireGuard and enable it at boot
+  ansible.builtin.systemd:
+    name: "wg-quick@{{ wg_interface }}"
+    enabled: true
+    state: started
+
+- name: Write the client configuration files
+  ansible.builtin.template:
+    src: client.conf.j2
+    dest: "{{ wg_dir }}/clients/{{ item.name }}.conf"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: "{{ wg_clients }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+
+- name: Fetch the client configurations to the control machine
+  ansible.builtin.fetch:
+    src: "{{ wg_dir }}/clients/{{ item.name }}.conf"
+    dest: "{{ wg_clients_dir }}/{{ item.name }}.conf"
+    flat: true
+  loop: "{{ wg_clients }}"
+  loop_control:
+    label: "{{ item.name }}"

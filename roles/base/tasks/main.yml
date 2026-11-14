@@ -1,0 +1,118 @@
+---
+- name: Update the apt cache and upgrade all packages
+  ansible.builtin.apt:
+    update_cache: true
+    upgrade: dist
+    cache_valid_time: 3600
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ base_packages }}"
+    state: present
+
+# --- server identity ---
+- name: Set the hostname
+  ansible.builtin.hostname:
+    name: "{{ hostname }}"
+
+- name: Keep the hostname across reboots (stop cloud-init resetting it)
+  ansible.builtin.copy:
+    dest: /etc/cloud/cloud.cfg.d/99-fortress.cfg
+    content: |
+      preserve_hostname: true
+      manage_etc_hosts: false
+    mode: "0644"
+
+- name: Map the hostname to 127.0.1.1 so sudo does not complain
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1\s'
+    line: "127.0.1.1 {{ hostname }}"
+
+- name: Set the timezone
+  community.general.timezone:
+    name: "{{ timezone }}"
+
+# --- admin user ---
+- name: Create the non-root admin user
+  ansible.builtin.user:
+    name: "{{ admin_user }}"
+    shell: /bin/bash
+    groups: sudo
+    append: true
+    create_home: true
+    password_lock: true   # no password at all: ssh key only
+
+- name: Allow the admin user to use sudo without a password (key is the credential)
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/90-{{ admin_user }}"
+    content: "{{ admin_user }} ALL=(ALL) NOPASSWD:ALL\n"
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
+
+# --- automatic security updates ---
+- name: Enable unattended security upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+    mode: "0644"
+
+- name: Enable the apt timers that drive unattended-upgrades
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: [apt-daily.timer, apt-daily-upgrade.timer]
+
+# --- firewall (rules first, enable last, so we never lock ourselves out) ---
+- name: Firewall - deny incoming, allow outgoing by default
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: incoming, policy: deny }
+    - { direction: outgoing, policy: allow }
+
+- name: Firewall - ssh from anywhere, rate limited (6 attempts / 30s)
+  community.general.ufw:
+    rule: limit
+    port: "22"
+    proto: tcp
+  when: ssh_allowed_from | length == 0
+
+- name: Firewall - ssh only from the allowed sources
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    from_ip: "{{ item }}"
+  loop: "{{ ssh_allowed_from }}"
+
+- name: Firewall - extra rules for this host
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port | string }}"
+    proto: "{{ item.proto }}"
+    from_ip: "{{ item.from_ip | default('any') }}"
+  loop: "{{ ufw_extra_rules }}"
+
+- name: Firewall - enable
+  community.general.ufw:
+    state: enabled
+
+# --- brute-force protection ---
+- name: Configure fail2ban
+  ansible.builtin.template:
+    src: fail2ban-fortress.conf.j2
+    dest: /etc/fail2ban/jail.d/10-fortress.conf
+    mode: "0644"
+  notify: Restart fail2ban
+
+- name: Start fail2ban and enable it at boot
+  ansible.builtin.systemd:
+    name: fail2ban
+    enabled: true
+    state: started

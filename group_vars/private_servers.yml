@@ -1,0 +1,8 @@
+---
+hostname: fortress-private
+# Only the bastion may reach sshd and the web server on this machine.
+ssh_allowed_from: ["{{ hostvars['bastion'].ansible_host }}"]
+ufw_extra_rules:
+  - { port: 80, proto: tcp, from_ip: "{{ hostvars['bastion'].ansible_host }}" }
+# Never ban the bastion: every legitimate admin session comes from it.
+f2b_ignoreip: ["{{ hostvars['bastion'].ansible_host }}"]

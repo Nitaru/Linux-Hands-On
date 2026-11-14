@@ -1,0 +1,30 @@
+---
+admin_user: fortress
+# The key that ends up in the admin user's authorized_keys (the `ssh` role).
+ssh_public_key: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/.keys/fortress_ed25519.pub') }}"
+timezone: UTC
+
+base_packages: [ufw, fail2ban, unattended-upgrades, curl, vim, htop, tmux, jq, net-tools, rsyslog]
+
+# ufw: who may reach sshd. Empty means anyone (rate limited with `ufw limit`).
+ssh_allowed_from: []
+ufw_extra_rules: []
+
+# fail2ban
+f2b_bantime: 1h
+f2b_findtime: 10m
+f2b_maxretry: 4
+f2b_ignoreip: []
+
+# ssh hardening
+ssh_allow_tcp_forwarding: "no"
+ssh_allow_users: ["ubuntu", "{{ admin_user }}"]
+
+# integrity-check (see roles/integrity_check)
+# Re-baselined by Ansible on every run, because Ansible is the source of truth for config.
+integrity_config_paths:
+  - /etc/ssh/sshd_config.d
+  - /etc/fail2ban/jail.d
+# Sealed once, only changed on purpose with `integrity-check update`.
+integrity_log_paths:
+  - /var/log/fortress

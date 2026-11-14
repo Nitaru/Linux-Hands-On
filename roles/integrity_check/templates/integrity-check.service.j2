@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Verify file integrity against the SHA-256 baseline
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/integrity-check check-all
+# The check only needs to read the system and write its own state.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/integrity-check
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true

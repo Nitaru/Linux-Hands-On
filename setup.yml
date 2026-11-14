@@ -1,0 +1,24 @@
+---
+# Run everything:        ansible-playbook setup.yml
+# Run only some roles:   ansible-playbook setup.yml --tags "ssh,vpn"
+# The bastion play comes first: the private server is only reachable through it.
+
+- name: Bastion host (public entry point and VPN endpoint)
+  hosts: bastion_servers
+  become: true
+  roles:
+    - { role: base,            tags: [base] }
+    - { role: ssh,             tags: [ssh] }
+    - { role: bastion,         tags: [bastion] }
+    - { role: wireguard,       tags: [wireguard, vpn] }
+    - { role: integrity_check, tags: [integrity] }
+
+- name: Private server (reachable only via the bastion)
+  hosts: private_servers
+  become: true
+  roles:
+    - { role: base,            tags: [base] }
+    - { role: ssh,             tags: [ssh] }
+    - { role: nginx,           tags: [nginx] }
+    - { role: app,             tags: [app] }
+    - { role: integrity_check, tags: [integrity] }

@@ -1,0 +1,22 @@
+---
+- name: Install the public key for the admin user
+  ansible.posix.authorized_key:
+    user: "{{ admin_user }}"
+    key: "{{ ssh_public_key }}"
+    state: present
+
+- name: Harden sshd (drop-in, the stock sshd_config is left alone)
+  ansible.builtin.template:
+    src: 10-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/10-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload sshd
+
+- name: Refuse to continue if the new sshd config is invalid (never reload a broken sshd)
+  ansible.builtin.command: /usr/sbin/sshd -t
+  changed_when: false
+
+- name: Apply the sshd change now, before later roles depend on it
+  ansible.builtin.meta: flush_handlers

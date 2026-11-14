@@ -1,0 +1,6 @@
+.keys/
+*.retry
+.vm-state/
+clients/*.conf
+inventory.ini
+ssh_config

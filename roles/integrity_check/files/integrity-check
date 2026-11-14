@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# integrity-check: SHA-256 baselines for files and directories, to spot tampering.
+#
+#   integrity-check init   <path>   store hashes for a file or a whole directory tree
+#   integrity-check check  <path>   compare against the stored hashes (exit 1 on any difference)
+#   integrity-check update <path>   accept the current state as the new baseline
+#   integrity-check check-all       check every path that was ever init'ed (used by the timer)
+#   integrity-check list            show tracked paths
+#
+# Exit codes: 0 clean, 1 tampering detected, 2 usage or setup error.
+set -euo pipefail
+
+STATE_DIR="${INTEGRITY_STATE_DIR:-/var/lib/integrity-check}"
+DB="$STATE_DIR/baseline.sha256"   # sha256sum format: "<64 hex>  <absolute path>"
+ROOTS="$STATE_DIR/roots"          # tracked paths, one per line
+HASH_LEN=64
+PATH_COL=$((HASH_LEN + 3))        # a path starts at column 67 of a DB line
+
+die() { echo "integrity-check: $*" >&2; exit 2; }
+
+usage() {
+  sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' >&2
+  exit 2
+}
+
+normalize() { realpath -m -- "$1"; }
+
+# Every regular file under $1 as "<sha256>  <path>", in a stable order.
+hash_tree() { find "$1" -type f -print0 | sort -z | xargs -0 -r sha256sum; }
+
+# DB lines for the path itself or anything beneath it.
+db_under() {
+  [[ -f $DB ]] || return 0
+  awk -v p="$1" -v c="$PATH_COL" '{ f = substr($0, c); if (f == p || index(f, p "/") == 1) print }' "$DB"
+}
+
+is_tracked() {
+  local r
+  [[ -n $(db_under "$1") ]] && return 0
+  [[ -f $ROOTS ]] || return 1
+  while IFS= read -r r; do
+    [[ $1 == "$r" || $1 == "$r"/* ]] && return 0
+  done < "$ROOTS"
+  return 1
+}
+
+alert() {
+  echo "$*" >&2
+  logger -t integrity-check -p auth.crit "TAMPERING DETECTED: $*" 2>/dev/null || true
+}
+
+store() {   # replace the baseline for $1 with its current state
+  local target=$1 tmp
+  [[ -e $target ]] || die "no such file or directory: $target"
+  install -d -m 0700 "$STATE_DIR"
+  [[ -f $DB ]] || install -m 0600 /dev/null "$DB"
+  [[ -f $ROOTS ]] || install -m 0600 /dev/null "$ROOTS"
+  tmp=$(mktemp -p "$STATE_DIR")
+  awk -v p="$target" -v c="$PATH_COL" '{ f = substr($0, c); if (!(f == p || index(f, p "/") == 1)) print }' "$DB" > "$tmp"
+  hash_tree "$target" >> "$tmp"
+  mv -- "$tmp" "$DB"
+  grep -qxF -- "$target" "$ROOTS" || echo "$target" >> "$ROOTS"
+  grep -c -F -- "  $target" "$DB" || true
+}
+
+cmd_init() {
+  local target n
+  target=$(normalize "${1:-}")
+  n=$(store "$target")
+  echo "Hashes stored successfully ($n files under $target)."
+}
+
+cmd_update() {
+  local target
+  target=$(normalize "${1:-}")
+  is_tracked "$target" || die "$target is not tracked yet, run init first"
+  store "$target" >/dev/null
+  echo "Hash updated successfully."
+}
+
+cmd_check() {
+  local target f status line bad=0 total=0
+  target=$(normalize "${1:-}")
+  is_tracked "$target" || die "$target is not tracked, run: integrity-check init $target"
+
+  declare -A base=() cur=()
+  while IFS= read -r line; do
+    [[ -n $line ]] && base["${line:$((PATH_COL - 1))}"]="${line:0:$HASH_LEN}"
+  done < <(db_under "$target")
+  if [[ -e $target ]]; then
+    while IFS= read -r line; do
+      [[ -n $line ]] && cur["${line:$((PATH_COL - 1))}"]="${line:0:$HASH_LEN}"
+    done < <(hash_tree "$target")
+  fi
+
+  while IFS= read -r f; do
+    [[ -n $f ]] || continue
+    total=$((total + 1))
+    if   [[ -v base[$f] && -v cur[$f] ]]; then
+      [[ ${base[$f]} == "${cur[$f]}" ]] && status="" || status="Modified (hash mismatch)"
+    elif [[ -v cur[$f] ]];  then status="New (not in baseline)"
+    else                         status="Deleted"
+    fi
+    if [[ -n $status ]]; then
+      bad=$((bad + 1))
+      if [[ -d $target ]]; then alert "$f: $status"; else echo "Status: $status"; alert "$f: $status"; fi
+    elif [[ ! -d $target ]]; then
+      echo "Status: Unmodified"
+    fi
+  done < <(printf '%s\n' "${!base[@]}" "${!cur[@]}" | sort -u)
+
+  if [[ -d $target ]]; then
+    if (( bad )); then echo "$target: $bad of $total files differ from the baseline" >&2
+    else echo "$target: OK ($total files)"; fi
+  fi
+  (( bad == 0 ))
+}
+
+cmd_check_all() {
+  local rc=0 r
+  [[ -s $ROOTS ]] || die "nothing tracked yet, run init first"
+  while IFS= read -r r; do
+    cmd_check "$r" || rc=1
+  done < "$ROOTS"
+  return $rc
+}
+
+cmd_list() { [[ -f $ROOTS ]] && cat "$ROOTS" || true; }
+
+case "${1:-}" in
+  init)      shift; [[ $# -eq 1 ]] || usage; cmd_init "$1" ;;
+  update)    shift; [[ $# -eq 1 ]] || usage; cmd_update "$1" ;;
+  check)     shift; [[ $# -eq 1 ]] || usage; cmd_check "$1" ;;
+  check-all) cmd_check_all ;;
+  list)      cmd_list ;;
+  *)         usage ;;
+esac

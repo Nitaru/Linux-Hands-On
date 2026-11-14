@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+Banner /etc/issue.net
+# Log the fingerprint of the key used for every login: this is the audit trail.
+LogLevel VERBOSE
+# The bastion may only forward to the private server's sshd (what ProxyJump uses),
+# so a compromised key cannot turn it into a general-purpose pivot.
+PermitOpen {{ bastion_permit_open }}

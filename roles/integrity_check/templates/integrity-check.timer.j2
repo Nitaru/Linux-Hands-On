@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Run the file integrity check every {{ integrity_interval | default('5') }} minutes
+
+[Timer]
+OnCalendar=*:0/{{ integrity_interval | default('5') }}
+RandomizedDelaySec=20
+Persistent=true
+
+[Install]
+WantedBy=timers.target

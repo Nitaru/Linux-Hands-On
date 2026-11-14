@@ -1,0 +1,22 @@
+# {{ ansible_managed }}
+[Interface]
+Address = {{ wg_server_address }}
+ListenPort = {{ wg_port }}
+PrivateKey = {{ wg_keys['server_key'] }}
+
+# NAT: traffic from VPN clients leaves through {{ ansible_default_ipv4.interface }} with the bastion's address.
+# -I puts the rules ahead of ufw's default-deny forward policy.
+PostUp   = iptables -t nat -A POSTROUTING -s {{ wg_network }} -o {{ ansible_default_ipv4.interface }} -j MASQUERADE
+PostUp   = iptables -I FORWARD 1 -i %i -j ACCEPT
+PostUp   = iptables -I FORWARD 1 -o %i -m state --state RELATED,ESTABLISHED -j ACCEPT
+PostDown = iptables -t nat -D POSTROUTING -s {{ wg_network }} -o {{ ansible_default_ipv4.interface }} -j MASQUERADE
+PostDown = iptables -D FORWARD -i %i -j ACCEPT
+PostDown = iptables -D FORWARD -o %i -m state --state RELATED,ESTABLISHED -j ACCEPT
+{% for c in wg_clients %}
+
+# {{ c.name }}
+[Peer]
+PublicKey = {{ wg_keys[c.name ~ '_pub'] }}
+PresharedKey = {{ wg_keys[c.name ~ '_psk'] }}
+AllowedIPs = {{ c.address }}/32
+{% endfor %}

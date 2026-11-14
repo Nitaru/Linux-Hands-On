@@ -1,0 +1,23 @@
+---
+- name: Legal banner shown before login
+  ansible.builtin.copy:
+    dest: /etc/issue.net
+    content: |
+      ----------------------------------------------------------------
+       Authorized access only. All sessions are logged and monitored.
+      ----------------------------------------------------------------
+    mode: "0644"
+
+- name: Harden sshd further for the jump host role
+  ansible.builtin.template:
+    src: 20-bastion.conf.j2
+    dest: /etc/ssh/sshd_config.d/20-bastion.conf
+    mode: "0644"
+  notify: Reload sshd
+
+- name: Refuse to continue if the new sshd config is invalid
+  ansible.builtin.command: /usr/sbin/sshd -t
+  changed_when: false
+
+- name: Apply the sshd change now
+  ansible.builtin.meta: flush_handlers

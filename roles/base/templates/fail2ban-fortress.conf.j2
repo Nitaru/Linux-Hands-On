@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[DEFAULT]
+bantime  = {{ f2b_bantime }}
+findtime = {{ f2b_findtime }}
+maxretry = {{ f2b_maxretry }}
+ignoreip = 127.0.0.1/8 ::1 {{ f2b_ignoreip | join(' ') }}
+
+[sshd]
+enabled = true
+# aggressive = also catches invalid users and pre-auth disconnects, not just bad passwords
+mode    = aggressive

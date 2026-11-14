@@ -1,0 +1,6 @@
+---
+app_web_root: /var/www/fortress
+# Tarball of a static site. If it does not exist it is built from ./site.
+app_tarball: "{{ playbook_dir }}/.vm-state/site.tar.gz"
+# Stretch goal: set this to deploy from a git repository instead of the tarball.
+# app_git_repo: https://github.com/<you>/<static-site>.git

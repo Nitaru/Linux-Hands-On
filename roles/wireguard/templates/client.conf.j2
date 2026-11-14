@@ -1,0 +1,14 @@
+# {{ item.name }}: import into the WireGuard app or run `wg-quick up ./{{ item.name }}.conf`
+[Interface]
+Address = {{ item.address }}/32
+PrivateKey = {{ wg_keys[item.name ~ '_key'] }}
+{% if wg_client_dns %}
+DNS = {{ wg_client_dns }}
+{% endif %}
+
+[Peer]
+PublicKey = {{ wg_keys['server_pub'] }}
+PresharedKey = {{ wg_keys[item.name ~ '_psk'] }}
+Endpoint = {{ wg_endpoint }}:{{ wg_port }}
+AllowedIPs = {{ wg_client_allowed_ips | join(', ') }}
+PersistentKeepalive = 25

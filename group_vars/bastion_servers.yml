@@ -1,0 +1,14 @@
+---
+hostname: fortress-bastion
+# ProxyJump needs TCP forwarding, but only to the private server's sshd.
+ssh_allow_tcp_forwarding: "yes"
+bastion_permit_open: "{{ hostvars['private'].ansible_host }}:22"
+integrity_config_paths:
+  - /etc/ssh/sshd_config.d
+  - /etc/fail2ban/jail.d
+  - /etc/wireguard/wg0.conf
+# Split tunnel: VPN subnet plus the one private host. The endpoint (bastion) is deliberately
+# outside these ranges, otherwise the tunnel's own packets would be routed into the tunnel.
+wg_client_allowed_ips:
+  - 10.8.0.0/24
+  - "{{ hostvars['private'].ansible_host }}/32"
