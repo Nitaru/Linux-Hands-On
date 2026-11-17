@@ -1,0 +1,9 @@
+profile: moderate
+exclude_paths:
+  - .keys/
+  - .vm-state/
+  - .github/
+skip_list:
+  # The role variables (wg_*, integrity_*, ...) are short on purpose and shared with group_vars;
+  # renaming them all is invasive and cannot be tested without the VMs.
+  - var-naming[no-role-prefix]

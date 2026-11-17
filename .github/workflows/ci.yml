@@ -1,0 +1,27 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    # The real checks (scripts/verify.sh, 42 of them) need two VMs and cannot run on a hosted runner.
+    # This job catches the mistakes that do not need a machine: syntax, style, risky patterns and scripts.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the linters
+        run: pip install ansible ansible-lint yamllint
+      - name: YAML style
+        run: yamllint --strict .
+      - name: Playbook syntax (against the example inventory)
+        run: ansible-playbook -i inventory.ini.example setup.yml --syntax-check
+      - name: ansible-lint
+        run: ansible-lint setup.yml roles
+      - name: Shell scripts
+        run: shellcheck --severity=warning scripts/*.sh

@@ -1,5 +1,7 @@
 # linux-fortress
 
+[![ci](https://github.com/Nitaru/Linux-Hands-On/actions/workflows/ci.yml/badge.svg)](https://github.com/Nitaru/Linux-Hands-On/actions/workflows/ci.yml)
+
 A hardened Linux environment, built from scratch and configured end to end with Ansible.
 It merges five [roadmap.sh](https://roadmap.sh/projects) projects into one system:
 [Linux Server Setup](https://roadmap.sh/projects/linux-server-setup),
@@ -28,6 +30,11 @@ make up        # two VMs, inventory.ini, ssh_config
 make setup     # ansible-playbook setup.yml (~5 min the first time)
 make verify    # 42-point security checklist
 ```
+
+`make verify` needs the running VMs, so it cannot run on GitHub. CI runs what does not need a machine:
+`yamllint`, `ansible-playbook --syntax-check` (against `inventory.ini.example`), `ansible-lint` and
+`shellcheck`. Run the same locally with `pip install ansible ansible-lint yamllint`, then
+`yamllint --strict . && ansible-lint setup.yml roles`.
 
 Run a single role with tags: `ansible-playbook setup.yml --tags ssh,vpn`.
 Tags: `base ssh bastion wireguard vpn nginx app integrity`.
@@ -77,9 +84,21 @@ group_vars/   all, bastion_servers, private_servers
 roles/        base ssh bastion wireguard nginx app integrity_check
 scripts/      vms.sh (VM lifecycle, inventory, ssh_config)  verify.sh  demo.sh
 site/         the static website the `app` role deploys
+.github/      CI: lint only (the VM checks cannot run on a hosted runner)
+.yamllint  .ansible-lint   linter settings, with the reason for each relaxed rule
 ```
 
 Secrets (`.keys/`, `clients/*.conf`, `inventory.ini`, `ssh_config`) are git-ignored.
+
+## What the linters found
+
+`ansible-lint` reported one real pattern, `risky-shell-pipe`, on the task that seals the audit logs.
+I did not add `set -o pipefail`: the task is `integrity-check list | grep -q <log> || integrity-check init <log>`,
+and with `pipefail` an early-exiting `grep -q` can kill `list` with SIGPIPE and wrongly run `init` again on a log
+that is already sealed. That would re-baseline a log that may have been tampered with, which is the opposite
+of what the role is for. So the rule is silenced on that one task, with the reason written next to it.
+The other findings were style (aligned inline lists in `setup.yml`) and the `wg_*`-style variable names, which
+are skipped in `.ansible-lint` because renaming them everywhere cannot be tested without the VMs.
 
 ## Clean up
 

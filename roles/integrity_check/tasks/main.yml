@@ -55,7 +55,10 @@
   changed_when: false
 
 # Logs: sealed once, a changed log must be investigated, not auto-accepted.
-- name: Seal the audit logs (only when not tracked yet)
+# The pipe is deliberate: `grep -q` decides whether the log is already sealed. With `set -o pipefail`,
+# grep exiting early can kill `list` with SIGPIPE and wrongly run `init` again, which would re-baseline
+# a log that may have been tampered with. So the pipefail lint is silenced here on purpose.
+- name: Seal the audit logs (only when not tracked yet)  # noqa: risky-shell-pipe
   ansible.builtin.shell: |
     /usr/local/sbin/integrity-check list | grep -qxF {{ item }} || /usr/local/sbin/integrity-check init {{ item }}
   args:

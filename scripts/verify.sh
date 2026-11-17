@@ -2,7 +2,7 @@
 # Security checklist: everything the Linux Server Setup, Bastion Host, VPN and
 # File Integrity projects ask for, checked against the running machines.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 SSH=(ssh -F ssh_config -o BatchMode=yes -o ConnectTimeout=8)
 pass=0; fail=0

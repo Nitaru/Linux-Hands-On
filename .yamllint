@@ -1,0 +1,10 @@
+---
+extends: default
+rules:
+  line-length: disable          # long shell one-liners and descriptions are clearer unwrapped
+  braces: { max-spaces-inside: 4 }   # inline role lists in setup.yml are aligned on purpose
+  commas: disable
+  truthy: { allowed-values: ["true", "false"], check-keys: false }
+ignore: |
+  .keys/
+  .vm-state/

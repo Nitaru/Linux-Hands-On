@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Scripted attacks and proofs. Each one prints what it does, then shows the evidence.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 SSH=(ssh -F ssh_config -o BatchMode=yes)
 BASTION_IP=$(awk '/Host bastion/{f=1} f&&/HostName/{print $2; exit}' ssh_config)
