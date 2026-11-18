@@ -1,0 +1,74 @@
+---
+- name: Verify the hardening, the web server and the integrity checker
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Read the effective sshd configuration
+      ansible.builtin.command: /usr/sbin/sshd -T
+      register: sshd_t
+      changed_when: false
+
+    - name: sshd is hardened
+      ansible.builtin.assert:
+        that:
+          - "'permitrootlogin no' in sshd_t.stdout_lines"
+          - "'passwordauthentication no' in sshd_t.stdout_lines"
+          - "'authenticationmethods publickey' in sshd_t.stdout_lines"
+          - "'maxauthtries 3' in sshd_t.stdout_lines"
+          - "'allowagentforwarding no' in sshd_t.stdout_lines"
+        fail_msg: "sshd is not hardened as the ssh role says"
+
+    - name: Fetch the site and its headers from nginx
+      ansible.builtin.uri:
+        url: http://127.0.0.1/
+        return_content: true
+      register: site
+
+    - name: nginx serves the site and hides its version
+      ansible.builtin.assert:
+        that:
+          - site.status == 200
+          - "'linux-fortress' in site.content"
+          - site.server is defined
+          - site.server == 'nginx'
+        fail_msg: "nginx is not serving the site, or it exposes its version ({{ site.server | default('no Server header') }})"
+
+    - name: The integrity baseline is clean right after converge
+      ansible.builtin.command: /usr/local/sbin/integrity-check check-all
+      changed_when: false
+
+    - name: The baseline is readable by root only
+      ansible.builtin.stat:
+        path: /var/lib/integrity-check/baseline.sha256
+      register: baseline
+
+    - name: Baseline permissions
+      ansible.builtin.assert:
+        that:
+          - baseline.stat.mode == '0600'
+          - baseline.stat.pw_name == 'root'
+
+    # The check that can fail: tamper with a protected file and expect the checker to notice, then put it back.
+    - name: Tamper with the sshd hardening drop-in
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config.d/10-hardening.conf
+        line: "PermitRootLogin yes"
+        regexp: "^PermitRootLogin"
+      register: tamper
+
+    - name: The integrity checker notices the tampering
+      ansible.builtin.command: /usr/local/sbin/integrity-check check /etc/ssh/sshd_config.d
+      register: detect
+      failed_when: detect.rc != 1
+      changed_when: false
+
+    - name: Put the file back (what Ansible does on the next run)
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config.d/10-hardening.conf
+        line: "PermitRootLogin no"
+        regexp: "^PermitRootLogin"
+
+    - name: The checker is clean again
+      ansible.builtin.command: /usr/local/sbin/integrity-check check /etc/ssh/sshd_config.d
+      changed_when: false

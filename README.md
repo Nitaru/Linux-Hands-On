@@ -36,6 +36,13 @@ make verify    # 42-point security checklist
 `shellcheck`. Run the same locally with `pip install ansible ansible-lint yamllint`, then
 `yamllint --strict . && ansible-lint setup.yml roles`.
 
+`molecule test` runs the roles that do not need real machines (`ssh`, `nginx`, `app`, `integrity_check`) in an Ubuntu 24.04
+container with systemd, and CI runs it too. It checks the sshd hardening, that nginx serves the site and hides its version, that the
+baseline is root-only, that a tampered file is **detected** (the checker must exit 1), and that a second run changes nothing.
+It cannot cover `ufw`, `fail2ban`, WireGuard or the two-machine ProxyJump setup, which is what `make verify` on the VMs is for.
+To check that it can fail, I changed the `ssh` template to `PermitRootLogin yes` in a scratch copy: converge still succeeded and the verify step stopped on "sshd is not hardened".
+Needs Docker: `pip install ansible-core molecule "molecule-plugins[docker]"`.
+
 Run a single role with tags: `ansible-playbook setup.yml --tags ssh,vpn`.
 Tags: `base ssh bastion wireguard vpn nginx app integrity`.
 Reach the machines with `ssh -F ssh_config bastion` and `ssh -F ssh_config private`.

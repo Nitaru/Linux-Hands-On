@@ -1,0 +1,29 @@
+---
+- name: Converge the roles that do not need real machines
+  hosts: all
+  become: true
+  pre_tasks:
+    - name: Refresh the apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+    - name: Install what the roles assume is already there (the base role does this on the real VMs)
+      ansible.builtin.apt:
+        name: [openssh-server, curl, rsyslog]
+        state: present
+    - name: Create the admin user (the base role does this on the real VMs)
+      ansible.builtin.user:
+        name: "{{ admin_user }}"
+        shell: /bin/bash
+        create_home: true
+        password_lock: true
+    - name: Make sure sshd's runtime directory exists for `sshd -t`
+      ansible.builtin.file:
+        path: /run/sshd
+        state: directory
+        mode: "0755"
+  roles:
+    - ssh
+    - nginx
+    - app
+    - integrity_check

@@ -1,0 +1,41 @@
+---
+# Runs the roles that do not need real machines inside an Ubuntu 24.04 container with systemd.
+# NOT covered here (needs the real VMs): ufw and fail2ban (kernel firewall), WireGuard (kernel module, NAT),
+# the bastion role (needs the private host's address), and the two-machine ProxyJump setup. `make verify` covers those.
+dependency:
+  name: galaxy
+  options:
+    requirements-file: collections.yml
+driver:
+  name: docker
+platforms:
+  - name: fortress
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    command: ""
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /tmp
+    pre_build_image: true
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: "${MOLECULE_PROJECT_DIRECTORY}/roles"
+  config_options:
+    defaults:
+      result_format: yaml
+  inventory:
+    group_vars:
+      all:
+        admin_user: fortress
+        ssh_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoleculeTestKeyOnlyNotARealKey molecule"
+        ssh_allow_users: ["fortress"]
+        ssh_allow_tcp_forwarding: "no"
+        integrity_config_paths: [/etc/ssh/sshd_config.d]
+        integrity_log_paths: [/var/log/fortress]
+        app_tarball: /tmp/site.tar.gz
+verifier:
+  name: ansible
