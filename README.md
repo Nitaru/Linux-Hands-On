@@ -100,6 +100,12 @@ of what the role is for. So the rule is silenced on that one task, with the reas
 The other findings were style (aligned inline lists in `setup.yml`) and the `wg_*`-style variable names, which
 are skipped in `.ansible-lint` because renaming them everywhere cannot be tested without the VMs.
 
+## Threat model
+
+[docs/threat-model.md](docs/threat-model.md) lists what the hardening covers, how each control is checked
+(configuration only, or proven on the running VMs), and the gaps that remain, worst first.
+The biggest one: a single unencrypted SSH key unlocks both machines.
+
 ## Clean up
 
 `make down` stops the VMs, `make destroy` deletes them and the generated files.
