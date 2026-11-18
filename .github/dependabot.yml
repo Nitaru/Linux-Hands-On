@@ -1,4 +1,5 @@
 # Keeps GitHub Actions, base images and dependencies current. Updates arrive as pull requests, so CI runs on each one.
+---
 version: 2
 updates:
   - package-ecosystem: github-actions
