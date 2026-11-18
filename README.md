@@ -103,3 +103,7 @@ are skipped in `.ansible-lint` because renaming them everywhere cannot be tested
 ## Clean up
 
 `make down` stops the VMs, `make destroy` deletes them and the generated files.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
